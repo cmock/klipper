@@ -17,10 +17,11 @@ HD44780_DELAY = .000037
 
 class HD44780:
     char_right_arrow = '\x7e'
-    char_thermometer = '\x00' # XXX - load fonts
+    char_thermometer = '\x00'
     char_heater_bed = '\x01'
     char_speed_factor = '\x02'
     char_clock = '\x03'
+    char_degrees = '\x04'
     def __init__(self, config):
         self.printer = config.get_printer()
         # pin config
@@ -94,6 +95,10 @@ class HD44780:
         for i, cmds in enumerate(init):
             minclock = self.mcu.print_time_to_clock(print_time + i * .100)
             self.send_cmds_cmd.send([self.oid, cmds], minclock=minclock)
+        # Add custom font character
+        self.glyph_framebuffer[0][:len(HD44780_chars)] = HD44780_chars
+        for i in range(len(self.glyph_framebuffer[0])):
+            self.glyph_framebuffer[1][i] = self.glyph_framebuffer[0][i] ^ 1
         self.flush()
     def write_text(self, x, y, data):
         if x + len(data) > 20:
@@ -103,6 +108,53 @@ class HD44780:
     def clear(self):
         self.text_framebuffer[0][:] = ' '*80
 
+HD44780_chars = [
+    # Thermometer
+    0b00100,
+    0b01010,
+    0b01010,
+    0b01010,
+    0b01010,
+    0b10001,
+    0b10001,
+    0b01110,
+    # Heated bed
+    0b00000,
+    0b11111,
+    0b10101,
+    0b10001,
+    0b10101,
+    0b11111,
+    0b00000,
+    0b00000,
+    # Speed factor
+    0b11100,
+    0b10000,
+    0b11000,
+    0b10111,
+    0b00101,
+    0b00110,
+    0b00101,
+    0b00000,
+    # Clock
+    0b00000,
+    0b01110,
+    0b10011,
+    0b10101,
+    0b10001,
+    0b01110,
+    0b00000,
+    0b00000,
+    # Degrees
+    0b01100,
+    0b10010,
+    0b10010,
+    0b01100,
+    0b00000,
+    0b00000,
+    0b00000,
+    0b00000,
+]
 
 ######################################################################
 # ST7920 (128x64 graphics) lcd chip
