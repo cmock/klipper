@@ -17,6 +17,10 @@ HD44780_DELAY = .000037
 
 class HD44780:
     char_right_arrow = '\x7e'
+    char_thermometer = '\x00' # XXX - load fonts
+    char_heater_bed = '\x01'
+    char_speed_factor = '\x02'
+    char_clock = '\x03'
     def __init__(self, config):
         self.printer = config.get_printer()
         # pin config
@@ -91,15 +95,11 @@ class HD44780:
             minclock = self.mcu.print_time_to_clock(print_time + i * .100)
             self.send_cmds_cmd.send([self.oid, cmds], minclock=minclock)
         self.flush()
-    def load_glyph(self, glyph_id, data, alt_text):
-        return alt_text
     def write_text(self, x, y, data):
         if x + len(data) > 20:
             data = data[:20 - min(x, 20)]
         pos = [0, 40, 20, 60][y] + x
         self.text_framebuffer[0][pos:pos+len(data)] = data
-    def write_graphics(self, x, y, row, data):
-        pass
     def clear(self):
         self.text_framebuffer[0][:] = ' '*80
 
@@ -200,12 +200,11 @@ class ST7920:
                 0x0c] # Enable display and hide cursor
         self.send(cmds)
         self.flush()
-    def load_glyph(self, glyph_id, data, alt_text):
+    def load_glyph(self, glyph_id, data):
         if len(data) > 32:
             data = data[:32]
         pos = min(glyph_id * 32, 96)
         self.glyph_framebuffer[0][pos:pos+len(data)] = data
-        return (0x00, glyph_id * 2)
     def write_text(self, x, y, data):
         if x + len(data) > 16:
             data = data[:16 - min(x, 16)]
@@ -375,8 +374,7 @@ class PrinterLCD:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.lcd_chip = config.getchoice('lcd_type', LCD_chips)(config)
-        # glyphs
-        self.fan_glyphs = self.heat_glyphs = None
+        self.lcd_type = config.get('lcd_type')
         # screen updating
         self.screen_update_timer = self.reactor.register_timer(
             self.screen_update_event)
@@ -392,11 +390,6 @@ class PrinterLCD:
             return
     def init_display(self):
         self.lcd_chip.init()
-        # Load glyphs
-        self.fan_glyphs = [self.load_glyph(0, fan1_icon, "f*"),
-                           self.load_glyph(1, fan2_icon, "f+")]
-        self.heat_glyphs = [self.load_glyph(2, heat1_icon, "b_"),
-                            self.load_glyph(3, heat2_icon, "b-")]
         # Load printer objects
         self.toolhead = self.printer.lookup_object('toolhead')
         names = ['gcode', 'toolhead', 'virtual_sdcard', 'fan',
@@ -405,6 +398,41 @@ class PrinterLCD:
         self.status_list = {name: obj for name, obj in objs.items()
                             if obj is not None}
         # Layout screen
+        if self.lcd_type == 'hd44780':
+            self.init_hd44780_layout()
+        else:
+            self.init_st7920_layout()
+        # Start screen update timer
+        self.reactor.update_timer(self.screen_update_timer, self.reactor.NOW)
+    def init_hd44780_layout(self):
+        lcd_chip = self.lcd_chip
+        draw_list = self.draw_list
+        if 'extruder0' in self.status_list:
+            draw_list.append((lcd_chip.write_text, 0, 0,
+                              lcd_chip.char_thermometer))
+            draw_list.append((self.draw_heater, 1, 0, 'extruder0'))
+        if 'heater_bed' in self.status_list:
+            draw_list.append((lcd_chip.write_text, 10, 0,
+                              lcd_chip.char_heater_bed))
+            draw_list.append((self.draw_heater, 11, 0, 'heater_bed'))
+        if 'extruder1' in self.status_list:
+            draw_list.append((lcd_chip.write_text, 0, 1,
+                              lcd_chip.char_thermometer))
+            draw_list.append((self.draw_heater, 1, 1, 'extruder1'))
+        if 'fan' in self.status_list:
+            draw_list.append((self.draw_fan, 10, 1))
+            draw_list.append((self.draw_percent, 11, 0, 4, 'fan', 'speed'))
+        draw_list.append((lcd_chip.write_text, 0, 2, lcd_chip.char_speed_factor))
+        draw_list.append((self.draw_percent, 1, 2, 4, 'gcode', 'speed_factor'))
+        if 'virtual_sdcard' in self.status_list:
+            draw_list.append((lcd_chip.write_text, 7, 2, "SD"))
+            draw_list.append((self.draw_percent, 9, 2, 4,
+                              'virtual_sdcard', 'progress'))
+        draw_list.append((lcd_chip.write_text, 14, 2, lcd_chip.char_clock))
+        draw_list.append((self.draw_time, 15, 2, 'toolhead', 'printing_time'))
+        draw_list.append((self.draw_status, 0, 3))
+    FAN1_GLYPH, FAN2_GLYPH, BED1_GLYPH, BED2_GLYPH = 0, 1, 2, 3
+    def init_st7920_layout(self):
         draw_list = self.draw_list
         if 'extruder0' in self.status_list:
             draw_list.append((self.draw_icon, 0, 0, nozzle_icon))
@@ -415,9 +443,13 @@ class PrinterLCD:
             draw_list.append((self.draw_heater, 2, 1, 'extruder1'))
             extruder_count = 2
         if 'heater_bed' in self.status_list:
+            self.load_glyph(self.BED1_GLYPH, heat1_icon)
+            self.load_glyph(self.BED2_GLYPH, heat2_icon)
             draw_list.append((self.draw_bed, 0, extruder_count))
             draw_list.append((self.draw_heater, 2, extruder_count, 'heater_bed'))
         if 'fan' in self.status_list:
+            self.load_glyph(self.FAN1_GLYPH, fan1_icon)
+            self.load_glyph(self.FAN2_GLYPH, fan2_icon)
             draw_list.append((self.draw_fan, 10, 0))
             draw_list.append((self.draw_percent, 12, 0, 4, 'fan', 'speed'))
         if 'virtual_sdcard' in self.status_list:
@@ -435,8 +467,6 @@ class PrinterLCD:
                               'gcode', 'speed_factor'))
         draw_list.append((self.draw_time, 10, 2, 'toolhead', 'printing_time'))
         draw_list.append((self.draw_status, 0, 3))
-        # Start screen update timer
-        self.reactor.update_timer(self.screen_update_timer, self.reactor.NOW)
     # Screen update callback
     def screen_update_event(self, eventtime):
         self.draw_info = {name: obj.get_status(eventtime)
@@ -447,21 +477,21 @@ class PrinterLCD:
             cb[0](*cb[1:])
         self.lcd_chip.flush()
         return eventtime + .500
-    # Glyph animations
-    def load_glyph(self, glyph_id, data, alt_text):
+    # Glyph animations on st7920
+    def load_glyph(self, glyph_id, data):
         glyph = [0x00] * (len(data) * 2)
         for i, bits in enumerate(data):
             glyph[i*2] = (bits >> 8) & 0xff
             glyph[i*2 + 1] = bits & 0xff
-        return self.lcd_chip.load_glyph(glyph_id, glyph, alt_text)
+        return self.lcd_chip.load_glyph(glyph_id, glyph)
     def draw_bed(self, x, y):
         if self.draw_info['heater_bed']['target']:
             frame = int(self.draw_eventtime) & 1
-            self.lcd_chip.write_text(x, y, self.heat_glyphs[frame])
+            self.lcd_chip.write_text(x, y, (0, (self.BED1_GLYPH + frame) * 2))
     def draw_fan(self, x, y):
         speed = self.draw_info['fan']['speed']
         frame = speed != 0. and int(self.draw_eventtime) & 1
-        self.lcd_chip.write_text(x, y, self.fan_glyphs[frame])
+        self.lcd_chip.write_text(x, y, (0, (self.FAN1_GLYPH + frame) * 2))
     # Graphics drawing
     def draw_icon(self, x, y, data):
         for i, bits in enumerate(data):
