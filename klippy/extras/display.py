@@ -571,10 +571,12 @@ class PrinterLCD:
         info = self.draw_info[name]
         temperature, target = info['temperature'], info['target']
         if target and abs(temperature - target) > 2.:
-            self.lcd_chip.write_text(x, y, "%3d%s%-3d" % (
-                temperature, self.lcd_chip.char_right_arrow, target))
+            s = "%3d%s%d" % (temperature, self.lcd_chip.char_right_arrow, target)
         else:
-            self.lcd_chip.write_text(x, y, "%3d" % (temperature,))
+            s = "%3d" % (temperature,)
+        if self.lcd_type == 'hd44780':
+            s += self.lcd_chip.char_degrees
+        self.lcd_chip.write_text(x, y, s)
     def draw_percent(self, x, y, width, name, field):
         value = int(self.draw_info[name][field] * 100.)
         self.lcd_chip.write_text(x, y, ("%d%%" % (value)).center(width))
