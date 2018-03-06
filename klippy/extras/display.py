@@ -472,8 +472,8 @@ class PrinterLCD:
                               lcd_chip.char_thermometer))
             draw_list.append((self.draw_heater, 1, 1, 'extruder1'))
         if 'fan' in self.status_list:
-            draw_list.append((self.draw_fan, 10, 1))
-            draw_list.append((self.draw_percent, 11, 0, 4, 'fan', 'speed'))
+            draw_list.append((lcd_chip.write_text, 10, 1, "Fan:"))
+            draw_list.append((self.draw_percent, 14, 1, 4, 'fan', 'speed'))
         draw_list.append((lcd_chip.write_text, 0, 2, lcd_chip.char_speed_factor))
         draw_list.append((self.draw_percent, 1, 2, 4, 'gcode', 'speed_factor'))
         if 'virtual_sdcard' in self.status_list:
