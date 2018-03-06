@@ -517,7 +517,7 @@ class PrinterLCD:
             draw_list.append((self.draw_icon, 10, 1, feedrate_icon))
             draw_list.append((self.draw_percent, 12, 1, 4,
                               'gcode', 'speed_factor'))
-        draw_list.append((self.draw_time, 10, 2, 'toolhead', 'printing_time'))
+        draw_list.append((self.draw_time, 11, 2, 'toolhead', 'printing_time'))
         draw_list.append((self.draw_status, 0, 3))
     # Screen update callback
     def screen_update_event(self, eventtime):
@@ -580,7 +580,7 @@ class PrinterLCD:
         self.lcd_chip.write_text(x, y, ("%d%%" % (value)).center(width))
     def draw_time(self, x, y, name, field):
         seconds = int(self.draw_info[name][field])
-        self.lcd_chip.write_text(x, y, " %02d:%02d" % (
+        self.lcd_chip.write_text(x, y, "%02d:%02d" % (
             seconds // (60 * 60), (seconds // 60) % 60))
     def draw_status(self, x, y):
         status = self.draw_info['toolhead']['status']
