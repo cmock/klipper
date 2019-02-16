@@ -14,7 +14,7 @@ help_txt = """
     PINS  : Load pin name aliases (eg, "PINS arduino")
     DELAY : Send a command at a clock time (eg, "DELAY 9999 get_uptime")
     FLOOD : Send a command many times (eg, "FLOOD 22 .01 get_uptime")
-    SUPPRESS : Suppress a response message (eg, "SUPPRESS stats")
+    SUPPRESS : Suppress a response message (eg, "SUPPRESS analog_in_state 4")
     SET   : Create a local variable (eg, "SET myvar 123.4")
     STATS : Report serial statistics
     LIST  : List available mcu commands, local commands, and local variables
@@ -33,6 +33,7 @@ class KeyboardReader:
     def __init__(self, ser, reactor):
         self.ser = ser
         self.reactor = reactor
+        self.start_time = reactor.monotonic()
         self.clocksync = clocksync.ClockSync(self.reactor)
         self.fd = sys.stdin.fileno()
         util.set_nonblock(self.fd)
@@ -40,7 +41,7 @@ class KeyboardReader:
         self.pins = None
         self.data = ""
         reactor.register_fd(self.fd, self.process_kbd)
-        self.connect_timer = reactor.register_timer(self.connect, reactor.NOW)
+        reactor.register_callback(self.connect)
         self.local_commands = {
             "PINS": self.command_PINS, "SET": self.command_SET,
             "DELAY": self.command_DELAY, "FLOOD": self.command_FLOOD,
@@ -52,19 +53,30 @@ class KeyboardReader:
         self.output(help_txt)
         self.output("="*20 + " attempting to connect " + "="*20)
         self.ser.connect()
+        msgparser = self.ser.msgparser
+        self.output("Loaded %d commands (%s / %s)" % (
+            len(msgparser.messages_by_id),
+            msgparser.version, msgparser.build_versions))
+        self.output("MCU config: %s" % (" ".join(
+            ["%s=%s" % (k, v) for k, v in msgparser.config.items()])))
         self.clocksync.connect(self.ser)
         self.ser.handle_default = self.handle_default
-        self.mcu_freq = self.ser.msgparser.get_constant_float('CLOCK_FREQ')
-        mcu_type = self.ser.msgparser.get_constant('MCU')
+        self.ser.register_callback(self.handle_output, '#output')
+        self.mcu_freq = msgparser.get_constant_float('CLOCK_FREQ')
+        mcu_type = msgparser.get_constant('MCU')
         self.pins = pins.PinResolver(mcu_type, validate_aliases=False)
-        self.reactor.unregister_timer(self.connect_timer)
         self.output("="*20 + "       connected       " + "="*20)
         return self.reactor.NEVER
     def output(self, msg):
         sys.stdout.write("%s\n" % (msg,))
         sys.stdout.flush()
     def handle_default(self, params):
-        self.output(self.ser.msgparser.format_params(params))
+        tdiff = params['#receive_time'] - self.start_time
+        self.output("%07.3f: %s" % (
+            tdiff, self.ser.msgparser.format_params(params)))
+    def handle_output(self, params):
+        tdiff = params['#receive_time'] - self.start_time
+        self.output("%07.3f: %s: %s" % (tdiff, params['#name'], params['#msg']))
     def handle_suppress(self, params):
         pass
     def update_evals(self, eventtime):
@@ -182,7 +194,6 @@ class KeyboardReader:
                 self.ser.send(msg)
             except msgproto.error as e:
                 self.output("Error: %s" % (str(e),))
-                return None
         self.data = kbdlines[-1]
 
 def main():

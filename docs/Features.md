@@ -20,12 +20,21 @@ Klipper has several compelling features:
   stepper event timing remains precise even at high speeds which
   improves overall stability.
 
+* Klipper supports printers with multiple micro-controllers. For
+  example, one micro-controller could be used to control an extruder,
+  while another controls the printer's heaters, while a third controls
+  the rest of the printer. The Klipper host software implements clock
+  synchronization to account for clock drift between
+  micro-controllers. No special code is needed to enable multiple
+  micro-controllers - it just requires a few extra lines in the config
+  file.
+
 * Configuration via simple config file. There's no need to reflash the
   micro-controller to change a setting. All of Klipper's configuration
   is stored in a standard config file which can be easily edited. This
   makes it easier to setup and maintain the hardware.
 
-* Portable code. Klipper works on both ARM and AVR
+* Portable code. Klipper works on ARM, AVR, and PRU based
   micro-controllers. Existing "reprap" style printers can run Klipper
   without hardware modification - just add a Raspberry Pi. Klipper's
   internal code layout makes it easier to support other
@@ -33,36 +42,21 @@ Klipper has several compelling features:
 
 * Simpler code. Klipper uses a very high level language (Python) for
   most code. The kinematics algorithms, the G-code parsing, the
-  heating and thermistor algorithms, etc. are all written in
-  Python. This makes it easier to develop new functionality.
+  heating and thermistor algorithms, etc. are all written in Python.
+  This makes it easier to develop new functionality.
 
-* Advanced features:
-  * Klipper implements the "pressure advance" algorithm for
-    extruders. When properly tuned, pressure advance reduces extruder
-    ooze.
-  * Klipper supports printers with multiple micro-controllers. For
-    example, one micro-controller could be used to control an
-    extruder, while another could control the printer's heaters, while
-    a third controls the rest of the printer. The Klipper host
-    software implements clock synchronization to account for clock
-    drift between micro-controllers. No special code is needed to
-    enable multiple micro-controllers - it just requires a few extra
-    lines in the config file.
-  * Klipper also implements a novel "stepper phase endstop" algorithm
-    that can dramatically improve the accuracy of typical endstop
-    switches. When properly tuned it can improve a print's first layer
-    bed adhesion.
-  * Support for limiting the top speed of short "zigzag" moves to
-    reduce printer vibration and noise. See the
-    [kinematics](Kinematics.md) document for more information.
+* Klipper uses an "iterative solver" to calculate precise step times
+  from simple kinematic equations. This makes porting Klipper to new
+  types of robots easier and it keeps timing precise even with complex
+  kinematics (no "line segmentation" is needed).
 
-To get started with Klipper, read the [installation](Installation.md)
-guide.
-
-Common features supported by Klipper
-====================================
+Additional features
+===================
 
 Klipper supports many standard 3d printer features:
+
+* Klipper implements the "pressure advance" algorithm for extruders.
+  When properly tuned, pressure advance reduces extruder ooze.
 
 * Works with Octoprint. This allows the printer to be controlled using
   a regular web-browser. The same Raspberry Pi that runs Klipper can
@@ -72,16 +66,60 @@ Klipper supports many standard 3d printer features:
   typical "slicers" are supported. One may continue to use Slic3r,
   Cura, etc. with Klipper.
 
-* Constant speed acceleration support. All printer moves will
-  gradually accelerate from standstill to cruising speed and then
-  decelerate back to a standstill.
+* Support for multiple extruders. Extruders with shared heaters and
+  extruders on independent carriages (IDEX) are also supported.
 
-* "Look-ahead" support. The incoming stream of G-Code movement
-  commands are queued and analyzed - the acceleration between
+* Support for cartesian, delta, and corexy style printers.
+
+* Automatic bed leveling support. Klipper can be configured for basic
+  bed tilt detection or full mesh bed leveling. If the bed uses
+  multiple Z steppers then Klipper can also level by independently
+  manipulating the Z steppers. Most Z height probes are supported,
+  including servo activated probes.
+
+* Automatic delta calibration support. The calibration tool can
+  perform basic height calibration as well as an enhanced X and Y
+  dimension calibration. The calibration can be done with a Z height
+  probe or via manual probing.
+
+* Support for common temperature sensors (eg, common thermistors,
+  AD595, PT100, MAX6675, MAX31855, MAX31856, MAX31865). Custom
+  thermistors and custom analog temperature sensors can also be
+  configured.
+
+* Basic thermal heater protection enabled by default.
+
+* Support for standard fans, nozzle fans, and temperature controlled
+  fans. No need to keep fans running when the printer is idle.
+
+* Support for run-time configuration of TMC2130, TMC2208, TMC2224, and
+  TMC2660 stepper motor drivers. There is also support for current
+  control of traditional stepper drivers via AD5206, MCP4451, MCP4728,
+  and PWM pins.
+
+* Support for common LCD displays attached directly to the printer. A
+  default menu is also available.
+
+* Constant acceleration and "look-ahead" support. All printer moves
+  will gradually accelerate from standstill to cruising speed and then
+  decelerate back to a standstill. The incoming stream of G-Code
+  movement commands are queued and analyzed - the acceleration between
   movements in a similar direction will be optimized to reduce print
   stalls and improve overall print time.
 
-* Support for cartesian, delta, and corexy style printers.
+* Klipper implements a "stepper phase endstop" algorithm that can
+  improve the accuracy of typical endstop switches. When properly
+  tuned it can improve a print's first layer bed adhesion.
+
+* Support for limiting the top speed of short "zigzag" moves to reduce
+  printer vibration and noise. See the [kinematics](Kinematics.md)
+  document for more information.
+
+* Sample configuration files are available for many common printers.
+  Check the [config directory](../config/) for a list.
+
+To get started with Klipper, read the [installation](Installation.md)
+guide.
 
 Step Benchmarks
 ===============
@@ -89,14 +127,23 @@ Step Benchmarks
 Below are the results of stepper performance tests. The numbers shown
 represent total number of steps per second on the micro-controller.
 
-| Micro-controller  | Fastest step rate | 3 steppers active |
-| ----------------- | ----------------- | ----------------- |
-| 20Mhz AVR         | 189K              | 125K              |
-| 16Mhz AVR         | 151K              | 100K              |
-| Arduino Due (ARM) | 382K              | 337K              |
-| Beaglebone PRU    | 689K              | 689K              |
+| Micro-controller            | Fastest step rate | 3 steppers active |
+| --------------------------- | ----------------- | ----------------- |
+| 16Mhz AVR                   | 151K              | 100K              |
+| 20Mhz AVR                   | 189K              | 125K              |
+| Arduino Zero (SAMD21)       | 234K              | 217K              |
+| "Blue Pill" (STM32F103)     | 395K              | 356K              |
+| Arduino Due (SAM3X8E)       | 438K              | 438K              |
+| Smoothieboard (LPC1768)     | 574K              | 574K              |
+| SAM4S8C                     | 578K              | 578K              |
+| Smoothieboard (LPC1769)     | 661K              | 661K              |
+| Beaglebone PRU              | 680K              | 680K              |
+| Duet2 Wifi/Eth (SAM4E8E)    | 686K              | 686K              |
+| Adafruit Metro M4 (SAMD51)  | 733K              | 694K              |
 
 On AVR platforms, the highest achievable step rate is with just one
-stepper stepping. On the Due, the highest step rate is with two
-simultaneous steppers stepping. On the PRU, the highest step rate is
-with three simultaneous steppers.
+stepper stepping. On the SAMD21 and STM32F103 the highest step rate is
+with two simultaneous steppers stepping. On the SAM3X8E, SAM4S8C,
+SAM4E8E, LPC176x, and PRU the highest step rate is with three
+simultaneous steppers. On the SAMD51, the highest step rate is with
+four simultaneous steppers.

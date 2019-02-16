@@ -6,8 +6,8 @@ Raspberry Pi 2 or Raspberry Pi 3 computer be used as the host machine
 for other machines).
 
 Klipper currently supports Atmel ATmega based micro-controllers,
-Arduino Due (Atmel SAM3x8e ARM micro-controller), and
-[Beaglebone PRU](beaglebone.md) based printers.
+Arduino Due (Atmel SAM3x8e ARM micro-controller), Smoothieboard (ARM
+LPC176x), and [Beaglebone PRU](beaglebone.md) based printers.
 
 Prepping an OS image
 ====================
@@ -17,7 +17,7 @@ Raspberry Pi computer. Use OctoPi v0.14.0 or later - see the
 [octopi releases](https://github.com/guysoft/OctoPi/releases) for
 release information. One should verify that OctoPi boots and that the
 OctoPrint web server works. After connecting to the OctoPrint web
-page, follow the prompt to upgrade OctoPrint to v1.3.5 or later.
+page, follow the prompt to upgrade OctoPrint to v1.3.7 or later.
 
 After installing OctoPi and upgrading OctoPrint, it will be necessary
 to ssh into the target machine to run a handful of system commands. If
@@ -50,9 +50,7 @@ make menuconfig
 ```
 
 Select the appropriate micro-controller and review any other options
-provided. For boards with serial ports, the default baud rate is
-250000 (see the [FAQ](FAQ.md#how-do-i-change-the-serial-baud-rate) if
-changing). Once configured, run:
+provided. Once configured, run:
 
 ```
 make
@@ -84,8 +82,9 @@ Under "Serial Connection" in "Additional serial ports" add
 "/tmp/printer". Then click "Save".
 
 Enter the Settings tab again and under "Serial Connection" change the
-"Serial Port" setting to "/tmp/printer". Unselect the "Not only cancel
-ongoing prints but also disconnect..." checkbox. Click "Save".
+"Serial Port" setting to "/tmp/printer". Navigate to the "Behavior"
+sub-tab and select the "Cancel any ongoing prints but stay connected
+to the printer" option. Click "Save".
 
 From the main page, under the "Connection" section (at the top left of
 the page) make sure the "Serial Port" is set to "/tmp/printer" and
@@ -146,7 +145,7 @@ In addition to common g-code commands, Klipper supports a few extended
 commands - "status" and "restart" are examples of these commands. Use
 the "help" command to get a list of other extended commands.
 
-After Klipper reports that the "printer is ready" go on to the
+After Klipper reports that the printer is ready go on to the
 [config check document](Config_checks.md) to perform some basic checks
 on the pin definitions in the config file.
 

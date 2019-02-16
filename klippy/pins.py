@@ -5,6 +5,9 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import re
 
+class error(Exception):
+    pass
+
 
 ######################################################################
 # Hardware pin names
@@ -25,17 +28,29 @@ def named_pins(fmt, port_count, bit_count=32):
              for port in range(port_count)
              for portbit in range(bit_count) }
 
+def lpc_pins():
+    return { 'P%d.%d' % (port, pin) : port * 32 + pin
+             for port in range(5) for pin in range(32) }
+
 def beaglebone_pins():
     gpios = named_pins("gpio%d_%d", 4)
     gpios.update({"AIN%d" % i: i+4*32 for i in range(8)})
     return gpios
 
 MCU_PINS = {
-    "atmega168": port_pins(5), "atmega328": port_pins(5),
+    "atmega168": port_pins(5),
+    "atmega328": port_pins(5), "atmega328p": port_pins(5),
     "atmega644p": port_pins(4), "atmega1284p": port_pins(4),
     "at90usb1286": port_pins(6), "at90usb646": port_pins(6),
+    "atmega32u4": port_pins(6),
     "atmega1280": port_pins(12), "atmega2560": port_pins(12),
-    "sam3x8e": port_pins(4, 32),
+    "sam3x8e": port_pins(4, 32), "sam3x8c": port_pins(2, 32),
+    "sam4s8c": port_pins(3, 32), "sam4e8e" : port_pins(5, 32),
+    "samd21g": port_pins(2, 32),
+    "samd51g19": port_pins(2, 32), "samd51j19": port_pins(3, 32),
+    "samd51n19": port_pins(3, 32), "samd51p20": port_pins(4, 32),
+    "stm32f103": port_pins(5, 16),
+    "lpc176x": lpc_pins(),
     "pru": beaglebone_pins(),
     "linux": {"analog%d" % i: i for i in range(8)}, # XXX
 }
@@ -96,6 +111,7 @@ Arduino_Due_analog = [
 Arduino_from_mcu = {
     "atmega168": (Arduino_standard, Arduino_analog_standard),
     "atmega328": (Arduino_standard, Arduino_analog_standard),
+    "atmega328p": (Arduino_standard, Arduino_analog_standard),
     "atmega644p": (Sanguino, Sanguino_analog),
     "atmega1280": (Arduino_mega, Arduino_analog_mega),
     "atmega2560": (Arduino_mega, Arduino_analog_mega),
@@ -103,7 +119,9 @@ Arduino_from_mcu = {
 }
 
 def update_map_arduino(pins, mcu):
-    dpins, apins = Arduino_from_mcu.get(mcu, ([], []))
+    if mcu not in Arduino_from_mcu:
+        raise error("Arduino aliases not supported on mcu '%s'" % (mcu,))
+    dpins, apins = Arduino_from_mcu[mcu]
     for i in range(len(dpins)):
         pins['ar' + str(i)] = pins[dpins[i]]
     for i in range(len(apins)):
@@ -144,6 +162,8 @@ beagleboneblack_mappings = {
 }
 
 def update_map_beaglebone(pins, mcu):
+    if mcu != 'pru':
+        raise error("Beaglebone aliases not supported on mcu '%s'" % (mcu,))
     for pin, gpio in beagleboneblack_mappings.items():
         pins[pin] = pins[gpio]
 
@@ -166,6 +186,8 @@ class PinResolver:
             update_map_arduino(self.pins, self.mcu_type)
         elif mapping_name == 'beaglebone':
             update_map_beaglebone(self.pins, self.mcu_type)
+        else:
+            raise error("Unknown pin alias mapping '%s'" % (mapping_name,))
     def update_command(self, cmd):
         def pin_fixup(m):
             name = m.group('name')
@@ -184,18 +206,14 @@ class PinResolver:
 # Pin to chip mapping
 ######################################################################
 
-class error(Exception):
-    pass
-
 class PrinterPins:
     error = error
     def __init__(self):
         self.chips = {}
         self.active_pins = {}
-    def lookup_pin(self, pin_type, pin_desc, share_type=None):
-        can_invert = pin_type in ['stepper', 'endstop', 'digital_out', 'pwm']
-        can_pullup = pin_type == 'endstop'
-        desc = pin_desc
+    def lookup_pin(self, pin_desc, can_invert=False, can_pullup=False,
+                   share_type=None):
+        desc = pin_desc.strip()
         pullup = invert = 0
         if can_pullup and desc.startswith('^'):
             pullup = 1
@@ -227,24 +245,23 @@ class PrinterPins:
                 raise error("Shared pin %s must have same polarity" % (pin,))
             return pin_params
         pin_params = {'chip': self.chips[chip_name], 'chip_name': chip_name,
-                      'type': pin_type, 'share_type': share_type,
-                      'pin': pin, 'invert': invert, 'pullup': pullup}
+                      'pin': pin, 'share_type': share_type,
+                      'invert': invert, 'pullup': pullup}
         self.active_pins[share_name] = pin_params
         return pin_params
     def setup_pin(self, pin_type, pin_desc):
-        pin_params = self.lookup_pin(pin_type, pin_desc)
-        return pin_params['chip'].setup_pin(pin_params)
+        can_invert = pin_type in ['stepper', 'endstop', 'digital_out', 'pwm']
+        can_pullup = pin_type in ['endstop']
+        pin_params = self.lookup_pin(pin_desc, can_invert, can_pullup)
+        return pin_params['chip'].setup_pin(pin_type, pin_params)
+    def reset_pin_sharing(self, pin_params):
+        share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+        del self.active_pins[share_name]
     def register_chip(self, chip_name, chip):
         chip_name = chip_name.strip()
         if chip_name in self.chips:
             raise error("Duplicate chip name '%s'" % (chip_name,))
         self.chips[chip_name] = chip
 
-def add_printer_objects(printer, config):
-    printer.add_object('pins', PrinterPins())
-
-def get_printer_pins(printer):
-    return printer.lookup_object('pins')
-
-def setup_pin(printer, pin_type, pin_desc):
-    return get_printer_pins(printer).setup_pin(pin_type, pin_desc)
+def add_printer_objects(config):
+    config.get_printer().add_object('pins', PrinterPins())

@@ -29,7 +29,9 @@ def create_pty(ptyname):
         os.unlink(ptyname)
     except os.error:
         pass
-    os.symlink(os.ttyname(sfd), ptyname)
+    filename = os.ttyname(sfd)
+    os.chmod(filename, 0660)
+    os.symlink(filename, ptyname)
     set_nonblock(mfd)
     old = termios.tcgetattr(mfd)
     old[3] = old[3] & ~termios.ECHO
@@ -41,7 +43,7 @@ def get_cpu_info():
         f = open('/proc/cpuinfo', 'rb')
         data = f.read()
         f.close()
-    except OSError:
+    except IOError, OSError:
         logging.debug("Exception on read /proc/cpuinfo: %s",
                       traceback.format_exc())
         return "?"
@@ -51,18 +53,31 @@ def get_cpu_info():
     model_name = dict(lines).get("model name", "?")
     return "%d core %s" % (core_count, model_name)
 
-def get_git_version():
-    # Obtain version info from "git" program
-    gitdir = os.path.join(sys.path[0], '..')
-    if not os.path.exists(gitdir):
-        logging.debug("No '.git' file/directory found")
-        return "?"
-    prog = "git -C %s describe --always --tags --long --dirty" % (gitdir,)
+def get_version_from_file(klippy_src):
     try:
-        process = subprocess.Popen(shlex.split(prog), stdout=subprocess.PIPE)
-        output = process.communicate()[0]
-        retcode = process.poll()
+        with open(os.path.join(klippy_src, '.version')) as h:
+            return h.read().rstrip()
+    except IOError:
+        pass
+    return "?"
+
+def get_git_version(from_file=True):
+    klippy_src = os.path.dirname(__file__)
+
+    # Obtain version info from "git" program
+    gitdir = os.path.join(klippy_src, '..')
+    prog = ('git', '-C', gitdir, 'describe', '--always', '--tags', '--long', '--dirty')
+    try:
+        process = subprocess.Popen(prog, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        ver, err = process.communicate()
+        retcode = process.wait()
+        if retcode == 0:
+            return ver.strip()
+        else:
+            logging.debug("Error getting git version: %s", err)
     except OSError:
         logging.debug("Exception on run: %s", traceback.format_exc())
-        return "?"
-    return output.strip()
+
+    if from_file:
+        return get_version_from_file(klippy_src)
+    return "?"

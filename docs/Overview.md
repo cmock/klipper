@@ -10,7 +10,15 @@ settings in the config file.
 
 The Klipper configuration is stored in a simple text file on the host
 machine. The [config/example.cfg](../config/example.cfg) file serves
-as a reference for the config file. The
+as a reference for the config file. See the [Slicers](Slicers.md)
+document for information on configuring a slicer with Klipper. See the
+[Endstop Phase](Endstop_Phase.md) document for information on
+Klipper's "stepper phase adjusted endstop" system. See the
+[Bed Level](Bed_Level.md) document for information on bed leveling
+with Klipper. See the [Probe Calibrate](Probe_Calibrate.md) document
+for information on calibrating automatic Z probes. See the
+[Delta Calibrate](Delta_Calibrate.md) document for information on
+calibrating delta printers. The
 [Pressure Advance](Pressure_Advance.md) document contains information
 on tuning the pressure advance config.
 
@@ -20,8 +28,11 @@ some common questions. The [G-Codes](G-Codes.md) document lists
 currently supported run-time commands.
 
 The history of Klipper releases is available at
-[releases](Releases.md). See [contact](Contact.md) for information on
-bug reporting and general communication with the developers.
+[releases](Releases.md). The [config changes](Config_Changes.md)
+document describes recent software changes that may require users to
+update their printer config file. See [contact](Contact.md) for
+information on bug reporting and general communication with the
+developers.
 
 Developer Documentation
 =======================
@@ -38,6 +49,6 @@ protocol between host and micro-controller. See also
 commands implemented in the micro-controller software.
 
 See [debugging](Debugging.md) for information on how to test and debug
-Klipper.
-
-See [todo](Todo.md) for information on possible future code features.
+Klipper. See [stm32f1](stm32f1.md) for information on the STM32F1
+micro-controller port. See [bootloaders](Bootloaders.md) for developer
+information on micro-controller flashing.
